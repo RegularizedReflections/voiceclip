@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VoiceClip</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --bg:       #f5f2eb;
+  --surface:  #edeae1;
+  --border:   #d4cfc4;
+  --ink:      #1c1a17;
+  --muted:    #8c8880;
+  --accent:   #c0392b;
+  --accent-s: #962d22;
+  --ok:       #2e7d52;
+  --radius:   10px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'DM Mono', monospace;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 18px 40px;
+  gap: 22px;
+}
+
+/* ── HEADER ── */
+header {
+  width: 100%; max-width: 580px;
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.logo {
+  font-family: 'Fraunces', serif;
+  font-size: 1.6rem; font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.logo em { font-style: italic; color: var(--accent); }
+.version { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.1em; }
+
+/* ── KEY SCREEN ── */
+#screen-key {
+  width: 100%; max-width: 580px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+#screen-key h2 {
+  font-family: 'Fraunces', serif;
+  font-weight: 300; font-size: 1.05rem;
+}
+#screen-key p { font-size: 0.72rem; color: var(--muted); line-height: 1.7; }
+#screen-key p a { color: var(--accent); text-decoration: none; }
+.key-row { display: flex; gap: 8px; }
+#key-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--ink);
+  outline: none;
+}
+#key-input:focus { border-color: var(--accent); }
+#key-input::placeholder { color: var(--muted); }
+.btn-confirm {
+  padding: 12px 18px;
+  background: var(--accent);
+  color: #fff;
+  border: none; border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.78rem; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.15s;
+}
+.btn-confirm:hover { background: var(--accent-s); }
+.key-note {
+  font-size: 0.65rem; color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: 10px; line-height: 1.7;
+}
+
+/* ── MAIN SCREEN ── */
+#screen-main { width: 100%; max-width: 580px; display: flex; flex-direction: column; gap: 18px; }
+
+/* ── STATUS ── */
+.status-row { display: flex; align-items: center; gap: 10px; height: 24px; }
+.dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border); flex-shrink: 0;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.dot.idle   { background: var(--muted); }
+.dot.rec    { background: var(--accent); box-shadow: 0 0 0 3px rgba(192,57,43,0.2); animation: dpulse 1.2s ease-in-out infinite; }
+.dot.proc   { background: #e67e22; box-shadow: 0 0 0 3px rgba(230,126,34,0.2); animation: dpulse 0.8s ease-in-out infinite; }
+.dot.done   { background: var(--ok); }
+@keyframes dpulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+#status-text { font-size: 0.72rem; color: var(--muted); flex: 1; }
+#timer { font-size: 0.72rem; color: var(--muted); min-width: 44px; text-align: right; }
+
+/* ── WAVEFORM ── */
+.waveform-wrap {
+  width: 100%; height: 48px;
+  display: flex; align-items: center; gap: 2px;
+  opacity: 0; transition: opacity 0.3s;
+}
+.waveform-wrap.active { opacity: 1; }
+.wvbar {
+  flex: 1; border-radius: 2px;
+  background: var(--accent); opacity: 0.5;
+  height: 3px; transition: height 0.07s;
+}
+
+/* ── BIG RECORD BUTTON ── */
+.btn-rec-wrap { display: flex; justify-content: center; }
+#btn-rec {
+  width: 96px; height: 96px; border-radius: 50%;
+  border: 3px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.2s, background 0.2s, transform 0.1s;
+  position: relative;
+}
+#btn-rec:active { transform: scale(0.94); }
+#btn-rec.recording {
+  border-color: var(--accent);
+  background: rgba(192,57,43,0.07);
+}
+.rec-inner {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--accent);
+  transition: border-radius 0.25s, width 0.25s, height 0.25s;
+}
+#btn-rec.recording .rec-inner {
+  border-radius: 6px;
+  width: 28px; height: 28px;
+}
+.rec-label {
+  position: absolute; bottom: -26px;
+  font-size: 0.65rem; color: var(--muted);
+  letter-spacing: 0.1em; white-space: nowrap;
+}
+
+/* ── PROCESSING ── */
+#processing-box {
+  display: none;
+  flex-direction: column; align-items: center; gap: 12px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+#processing-box.active { display: flex; }
+.spinner {
+  width: 28px; height: 28px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#processing-box p { font-size: 0.75rem; color: var(--muted); }
+
+/* ── TRANSCRIPT AREA ── */
+#result-box {
+  display: none;
+  flex-direction: column; gap: 12px;
+}
+#result-box.active { display: flex; }
+.transcript-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  min-height: 120px;
+  max-height: 45svh;
+  overflow-y: auto;
+}
+#transcript {
+  font-family: 'Fraunces', serif;
+  font-size: 1.05rem; font-weight: 300;
+  line-height: 1.75;
+  color: var(--ink);
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.char-row {
+  display: flex; justify-content: space-between; align-items: center;
+}
+#char-count { font-size: 0.65rem; color: var(--muted); }
+.action-row { display: flex; gap: 8px; }
+.btn-copy {
+  flex: 1; padding: 14px;
+  background: var(--ink);
+  color: var(--bg);
+  border: none; border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.78rem; font-weight: 500;
+  cursor: pointer; letter-spacing: 0.05em;
+  transition: background 0.15s;
+}
+.btn-copy:hover { background: #333; }
+.btn-copy.copied { background: var(--ok); }
+.btn-new {
+  padding: 14px 18px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.78rem; color: var(--muted);
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-new:hover { border-color: var(--ink); color: var(--ink); }
+
+/* ── ERROR ── */
+#error-box {
+  display: none;
+  background: rgba(192,57,43,0.08);
+  border: 1px solid rgba(192,57,43,0.25);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-size: 0.75rem; color: var(--accent);
+  line-height: 1.6;
+}
+#error-box.active { display: block; }
+
+/* ── FOOTER ── */
+footer {
+  width: 100%; max-width: 580px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+footer span { font-size: 0.65rem; color: var(--muted); }
+#btn-change-key {
+  font-size: 0.65rem; color: var(--muted);
+  background: none; border: none; cursor: pointer;
+  font-family: 'DM Mono', monospace;
+  text-decoration: underline; padding: 0;
+}
+#btn-change-key:hover { color: var(--ink); }
+
+/* ── HIDDEN ── */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Voice<em>Clip</em></div>
+  <span class="version">VOXTRAL · v1</span>
+</header>
+
+<!-- ── ÉCRAN CLÉ ── -->
+<div id="screen-key">
+  <h2>Clé API Mistral</h2>
+  <p>Saisie une seule fois par session. Jamais stockée sur un serveur.<br>
+     Obtenir une clé → <a href="https://console.mistral.ai" target="_blank">console.mistral.ai</a></p>
+  <div class="key-row">
+    <input id="key-input" type="password" placeholder="sk-••••••••••••••••••" autocomplete="off" autocorrect="off" spellcheck="false"/>
+    <button class="btn-confirm" onclick="confirmKey()">OK</button>
+  </div>
+  <p class="key-note">La clé reste en mémoire jusqu'à la fermeture de l'onglet. Voxtral facture ~0.001 €/min d'audio.</p>
+</div>
+
+<!-- ── ÉCRAN PRINCIPAL ── -->
+<div id="screen-main" class="hidden">
+
+  <div class="status-row">
+    <div class="dot idle" id="dot"></div>
+    <span id="status-text">Prêt à enregistrer</span>
+    <span id="timer"></span>
+  </div>
+
+  <div class="waveform-wrap" id="waveform"></div>
+
+  <div class="btn-rec-wrap">
+    <button id="btn-rec" onclick="toggleRec()" aria-label="Enregistrer">
+      <div class="rec-inner"></div>
+      <span class="rec-label" id="rec-label">APPUYER POUR PARLER</span>
+    </button>
+  </div>
+
+  <div id="processing-box">
+    <div class="spinner"></div>
+    <p>Voxtral transcrit…</p>
+  </div>
+
+  <div id="error-box"></div>
+
+  <div id="result-box">
+    <div class="transcript-wrap">
+      <div id="transcript" contenteditable="true" spellcheck="true"></div>
+    </div>
+    <div class="char-row">
+      <span id="char-count">0 car.</span>
+    </div>
+    <div class="action-row">
+      <button class="btn-copy" id="btn-copy" onclick="copyText()">COPIER</button>
+      <button class="btn-new" onclick="resetForNew()">↺ Nouveau</button>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span id="key-indicator" class="hidden">clé ••••••••</span>
+  <button id="btn-change-key" class="hidden" onclick="changeKey()">changer de clé</button>
+</footer>
+
+<script>
+// ── STATE ──
+let apiKey = sessionStorage.getItem('vc_key') || '';
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let timerInterval = null;
+let seconds = 0;
+let analyser = null, audioCtx = null, animFrame = null;
+let stream = null;
+
+const NUM_BARS = 28;
+
+// ── INIT ──
+window.addEventListener('DOMContentLoaded', () => {
+  buildWaveform();
+  if (apiKey) showMain();
+  else showKeyScreen();
+});
+
+// ── KEY SCREEN ──
+function showKeyScreen() {
+  document.getElementById('screen-key').classList.remove('hidden');
+  document.getElementById('screen-main').classList.add('hidden');
+  document.getElementById('key-indicator').classList.add('hidden');
+  document.getElementById('btn-change-key').classList.add('hidden');
+  setTimeout(() => document.getElementById('key-input').focus(), 100);
+}
+
+function confirmKey() {
+  const val = document.getElementById('key-input').value.trim();
+  if (!val) return;
+  apiKey = val;
+  sessionStorage.setItem('vc_key', val);
+  document.getElementById('key-input').value = '';
+  showMain();
+}
+
+document.getElementById('key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmKey();
+});
+
+function showMain() {
+  document.getElementById('screen-key').classList.add('hidden');
+  document.getElementById('screen-main').classList.remove('hidden');
+  document.getElementById('key-indicator').classList.remove('hidden');
+  document.getElementById('btn-change-key').classList.remove('hidden');
+  setState('idle');
+}
+
+function changeKey() {
+  sessionStorage.removeItem('vc_key');
+  apiKey = '';
+  if (isRecording) stopRec(false);
+  showKeyScreen();
+}
+
+// ── WAVEFORM ──
+const bars = [];
+function buildWaveform() {
+  const wrap = document.getElementById('waveform');
+  for (let i = 0; i < NUM_BARS; i++) {
+    const b = document.createElement('div');
+    b.className = 'wvbar';
+    wrap.appendChild(b);
+    bars.push(b);
+  }
+}
+
+function startWaveform(inputStream) {
+  audioCtx = new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 64;
+  const src = audioCtx.createMediaStreamSource(inputStream);
+  src.connect(analyser);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  document.getElementById('waveform').classList.add('active');
+  function draw() {
+    animFrame = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(data);
+    for (let i = 0; i < bars.length; i++) {
+      const idx = Math.floor(i * data.length / bars.length);
+      const h = Math.max(3, (data[idx] / 255) * 40);
+      bars[i].style.height = h + 'px';
+    }
+  }
+  draw();
+}
+
+function stopWaveform() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  document.getElementById('waveform').classList.remove('active');
+  bars.forEach(b => b.style.height = '3px');
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  analyser = null;
+}
+
+// ── STATE MACHINE ──
+function setState(state, extra) {
+  const dot = document.getElementById('dot');
+  const statusText = document.getElementById('status-text');
+  const timerEl = document.getElementById('timer');
+  const procBox = document.getElementById('processing-box');
+  const resultBox = document.getElementById('result-box');
+  const errBox = document.getElementById('error-box');
+  const btnRec = document.getElementById('btn-rec');
+  const recLabel = document.getElementById('rec-label');
+
+  dot.className = 'dot';
+  procBox.classList.remove('active');
+  resultBox.classList.remove('active');
+  errBox.classList.remove('active');
+  btnRec.classList.remove('recording');
+  btnRec.style.display = 'flex';
+
+  if (state === 'idle') {
+    dot.classList.add('idle');
+    statusText.textContent = 'Prêt à enregistrer';
+    timerEl.textContent = '';
+    recLabel.textContent = 'APPUYER POUR PARLER';
+  }
+  else if (state === 'recording') {
+    dot.classList.add('rec');
+    statusText.textContent = 'Enregistrement en cours…';
+    btnRec.classList.add('recording');
+    recLabel.textContent = 'APPUYER POUR ARRÊTER';
+  }
+  else if (state === 'processing') {
+    dot.classList.add('proc');
+    statusText.textContent = 'Transcription…';
+    timerEl.textContent = '';
+    btnRec.style.display = 'none';
+    procBox.classList.add('active');
+  }
+  else if (state === 'done') {
+    dot.classList.add('done');
+    statusText.textContent = 'Transcription prête';
+    btnRec.style.display = 'none';
+    resultBox.classList.add('active');
+    if (extra) {
+      document.getElementById('transcript').innerText = extra;
+      updateCharCount();
+    }
+  }
+  else if (state === 'error') {
+    dot.className = 'dot';
+    statusText.textContent = 'Erreur';
+    errBox.classList.add('active');
+    errBox.textContent = extra || 'Erreur inconnue.';
+  }
+}
+
+// ── RECORD ──
+async function toggleRec() {
+  if (isRecording) stopRec(true);
+  else await startRec();
+}
+
+async function startRec() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch(e) {
+    setState('error', 'Microphone inaccessible : ' + e.message);
+    return;
+  }
+
+  audioChunks = [];
+  // Prefer WebM (Android) then OGG then default
+  const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg',''].find(m => !m || MediaRecorder.isTypeSupported(m));
+  mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = () => sendToVoxtral();
+
+  mediaRecorder.start(500); // collect every 500ms for reliability
+  isRecording = true;
+  seconds = 0;
+  setState('recording');
+  startWaveform(stream);
+
+  timerInterval = setInterval(() => {
+    seconds++;
+    const m = String(Math.floor(seconds/60)).padStart(2,'0');
+    const s = String(seconds%60).padStart(2,'0');
+    document.getElementById('timer').textContent = m + ':' + s;
+  }, 1000);
+}
+
+function stopRec(sendAfter) {
+  clearInterval(timerInterval);
+  isRecording = false;
+  stopWaveform();
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    if (sendAfter) setState('processing');
+    mediaRecorder.stop(); // triggers onstop → sendToVoxtral
+  }
+  if (!sendAfter) setState('idle');
+}
+
+// ── VOXTRAL API ──
+async function sendToVoxtral() {
+  const mimeType = mediaRecorder.mimeType || 'audio/webm';
+  const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+  const blob = new Blob(audioChunks, { type: mimeType });
+
+  const formData = new FormData();
+  formData.append('file', blob, 'audio.' + ext);
+  formData.append('model', 'voxtral-mini-2507');
+  formData.append('language', 'fr'); // force French; remove for auto-detect
+
+  try {
+    const res = await fetch('https://api.mistral.ai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = err?.message || err?.detail || res.statusText;
+      if (res.status === 401) {
+        setState('error', 'Clé API invalide ou expirée. Cliquez sur "changer de clé".');
+      } else {
+        setState('error', 'Erreur Mistral (' + res.status + ') : ' + msg);
+      }
+      return;
+    }
+
+    const data = await res.json();
+    const text = data?.text?.trim();
+    if (!text) {
+      setState('error', 'Voxtral n\'a pas retourné de texte. L\'audio était peut-être silencieux.');
+      return;
+    }
+    setState('done', text);
+
+  } catch(e) {
+    setState('error', 'Erreur réseau : ' + e.message);
+  }
+}
+
+// ── ACTIONS ──
+function copyText() {
+  const text = (document.getElementById('transcript').innerText || '').trim();
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'COPIÉ ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPIER'; btn.classList.remove('copied'); }, 2200);
+  });
+}
+
+function resetForNew() {
+  document.getElementById('transcript').innerText = '';
+  document.getElementById('char-count').textContent = '0 car.';
+  setState('idle');
+}
+
+function updateCharCount() {
+  const t = document.getElementById('transcript').innerText || '';
+  document.getElementById('char-count').textContent = t.length + ' car.';
+}
+
+document.getElementById('transcript').addEventListener('input', updateCharCount);
+</script>
+</body>
+</html>
