@@ -224,6 +224,14 @@ header {
 }
 .btn-transform[data-type="critique"]:hover { background: rgba(90,62,43,0.07); border-style: dashed; }
 
+.btn-transform[data-type="poesie"] {
+  color: #7a6a4a;
+  flex: 100%;
+  font-style: italic;
+  letter-spacing: 0.08em;
+}
+.btn-transform[data-type="poesie"]:hover { background: rgba(122,106,74,0.07); }
+
 .btn-transform.loading { opacity: 0.5; pointer-events: none; }
 
 /* AI RESULT CARD */
@@ -285,7 +293,7 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 
 <header>
   <div class="logo">Voice<em>Clip</em></div>
-  <span class="version">VOXTRAL + MISTRAL MEDIUM · V2.1</span>
+  <span class="version">VOXTRAL + MISTRAL MEDIUM · V2.2</span>
 </header>
 
 <!-- KEY SCREEN -->
@@ -362,6 +370,9 @@ footer span { font-size: 0.62rem; color: var(--muted); }
       <button class="btn-transform" data-type="critique" onclick="transform('critique')">
         <span class="t-icon">⚑</span> Critique ma pensée
       </button>
+      <button class="btn-transform" data-type="poesie" onclick="transform('poesie')">
+        <span class="t-icon">✿</span> Poésie
+      </button>
     </div>
 
     <!-- AI RESULT CARD -->
@@ -404,47 +415,53 @@ const TRANSFORM_MODEL  = 'mistral-medium-latest';
 const PROMPTS = {
   optimise: {
     label: '✦ OPTIMISÉ',
-    system: `Tu reçois la transcription brute d'une réflexion vocale spontanée. 
+    system: `Tu reçois la transcription brute d'une réflexion vocale spontanée.
 Ton rôle : supprimer les répétitions, les hésitations et les redondances ; restructurer les idées de façon fluide et cohérente ; conserver strictement le registre, la langue et le ton de l'auteur ; ne rien inventer ni ajouter.
 Retourne uniquement le texte optimisé, sans commentaire.`
   },
   prompt: {
     label: '⌥ PROMPT',
-    system: `Tu reçois la transcription brute d'une réflexion vocale. 
-Transforme-la en un prompt clair, précis et exploitable pour un LLM (Claude, ChatGPT, Mistral). 
-Структure : contexte si nécessaire, instruction principale, format de réponse attendu si pertinent.
-Conserve la langue de l'auteur. Retourne uniquement le prompt, sans commentaire.`
+    system: `Tu reçois la transcription brute d'une réflexion vocale.
+Extrais l'intention centrale et formule un prompt direct, prêt à coller dans un LLM.
+Règles strictes : maximum 120 mots, une seule instruction principale, pas de markdown complexe, pas de structure en sections ni de tableaux.
+Si un contexte minimal est utile, une phrase suffit. Va à l'essentiel.
+Conserve la langue de l'auteur. Retourne uniquement le prompt, rien d'autre.`
   },
   mail: {
     label: '✉ MAIL',
-    system: `Tu reçois la transcription brute d'une réflexion vocale décrivant un message à envoyer.
-Rédige un mail professionnel : objet en première ligne (préfixé "Objet :"), puis corps du mail structuré et adapté au contexte.
-Conserve la langue de l'auteur. Adopte un ton professionnel sans être guindé. Retourne uniquement le mail, sans commentaire.`
+    system: `Tu reçois la transcription brute d'une réflexion vocale.
+Rédige un mail court et naturel, adapté au contexte et au ton du message.
+Règles : infère le registre depuis le contenu (décontracté si informel, pro si formel — pas de mail de prospection par défaut) ; 3 à 8 lignes maximum ; objet en première ligne préfixé "Objet :" ; pas de sections, pas de listes, pas de markdown.
+Si le destinataire ou l'objet exact sont flous, fais le choix le plus raisonnable sans le signaler.
+Conserve la langue de l'auteur. Retourne uniquement le mail, rien d'autre.`
   },
   note: {
-    label: '◈ NOTE STRUCTURÉE',
+    label: '◈ NOTE',
     system: `Tu reçois la transcription brute d'une réflexion vocale.
-Transforme-la en une note structurée : titre court, quelques bullet points synthétiques (3-6 max), et si pertinent une section "Actions" ou "Questions ouvertes".
-Conserve la langue de l'auteur. Retourne uniquement la note, sans commentaire.`
+Transforme-la en une note synthétique : titre court (une ligne), 3 à 5 points clés, et si pertinent une ligne "→ Action" ou "→ Question ouverte".
+Pas de sous-sections, pas de markdown lourd. Sobre et lisible.
+Conserve la langue de l'auteur. Retourne uniquement la note, rien d'autre.`
   },
   critique: {
     label: '⚑ CRITIQUE',
-    system: `Tu es un interlocuteur exigeant, direct et bienveillant — ni complaisant ni blessant.
+    system: `Tu es un interlocuteur exigeant, direct et bienveillant.
 Tu reçois la transcription brute d'une réflexion vocale spontanée.
+Analyse la pensée elle-même — pas la forme, pas le style.
 
-Ton rôle : analyser la qualité de la pensée elle-même, pas la forme ni le style.
+Commence par la tension ou la contradiction la plus forte que tu identifies. Pas de catégories prédéfinies, pas de titres markdown. Écris en prose courte, incisive.
+Pointe : les zones floues, les hypothèses silencieuses, les répétitions qui trahissent une idée non résolue, les raccourcis intellectuels.
+Termine par 2 questions précises qui font légèrement mal parce qu'elles pointent l'essentiel non dit.
 
-Identifie sans détour :
-- les zones floues ou imprécises (idées posées sans être vraiment définies)
-- les hypothèses implicites non questionnées
-- les contradictions internes ou tensions non résolues
-- les répétitions qui trahissent une idée non aboutie
-- les idées fortes qui mériteraient d'être développées mais restent en surface
-
-Termine par 2 ou 3 questions courtes et précises qui forcent à aller plus loin — des questions qui font légèrement mal parce qu'elles pointent l'essentiel.
-
-Ne reformule pas le propos. Ne complimente pas. Ne commence pas par "Cette réflexion...".
-Sois concis, incisif, utile. Conserve la langue de l'auteur.`
+Ne reformule pas. Ne complimente pas. Maximum 200 mots.
+Conserve la langue de l'auteur.`
+  },
+  poesie: {
+    label: '✿ POÉSIE',
+    system: `Tu reçois la transcription brute d'une réflexion vocale spontanée.
+Transforme-la en un poème court — forme libre, pas de rime forcée.
+Garde l'émotion, les images, les tensions du propos original. Distille, ne traduis pas.
+Sois surprenant. Évite le lyrique convenu et les métaphores usées.
+Conserve la langue de l'auteur. Retourne uniquement le poème, rien d'autre.`
   }
 };
 
