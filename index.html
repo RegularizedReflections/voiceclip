@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceClip — Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0d0d0f;
+      --surface:   #131316;
+      --border:    #222228;
+      --amber:     #f5a623;
+      --amber-dim: #b87a18;
+      --text:      #e8e4dc;
+      --muted:     #6b6870;
+      --accent2:   #4ecdc4;
+      --accent3:   #ff6b6b;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* ── Grain overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.4;
+    }
+
+    /* ── Header ── */
+    header {
+      position: relative;
+      z-index: 1;
+      padding: 3.5rem 2rem 2rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .logo-icon {
+      width: 42px;
+      height: 42px;
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    /* Animated mic waveform SVG ring */
+    .logo-icon svg circle.pulse {
+      animation: pulse-ring 2s ease-in-out infinite;
+    }
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 0.2; r: 18; }
+      50%       { opacity: 0.6; r: 20; }
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    h1 span {
+      color: var(--amber);
+    }
+
+    .tagline {
+      margin-top: 0.5rem;
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Main grid ── */
+    main {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      padding: 3rem 1.5rem;
+      max-width: 960px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .section-label {
+      font-size: 0.68rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+      padding-left: 2px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+
+    .card {
+      background: var(--surface);
+      padding: 1.8rem 1.6rem 1.6rem;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: background 0.15s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent 60%, var(--card-accent, var(--amber)) 200%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .card:hover {
+      background: #17171b;
+    }
+
+    .card:hover::after {
+      opacity: 0.04;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      background: var(--card-accent-bg, rgba(245,166,35,0.08));
+      border: 1px solid var(--card-accent-border, rgba(245,166,35,0.15));
+      flex-shrink: 0;
+    }
+
+    .card-badge {
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.2em 0.55em;
+      border: 1px solid var(--card-accent-border, rgba(245,166,35,0.3));
+      color: var(--card-accent, var(--amber));
+      border-radius: 3px;
+      margin-top: 4px;
+    }
+
+    .card-name {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+
+    .card-desc {
+      font-size: 0.75rem;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .card-link {
+      margin-top: auto;
+      font-size: 0.68rem;
+      color: var(--card-accent, var(--amber));
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .card-link::after {
+      content: '→';
+      transition: transform 0.2s ease;
+    }
+
+    .card:hover .card-link::after {
+      transform: translateX(4px);
+    }
+
+    /* Individual card accent overrides */
+    .card.v1   { --card-accent: var(--amber);  --card-accent-bg: rgba(245,166,35,0.07); --card-accent-border: rgba(245,166,35,0.18); }
+    .card.v2   { --card-accent: #7ecfff;        --card-accent-bg: rgba(126,207,255,0.07); --card-accent-border: rgba(126,207,255,0.18); }
+    .card.v3   { --card-accent: #c084fc;        --card-accent-bg: rgba(192,132,252,0.07); --card-accent-border: rgba(192,132,252,0.18); }
+    .card.note { --card-accent: var(--accent2); --card-accent-bg: rgba(78,205,196,0.07); --card-accent-border: rgba(78,205,196,0.18); }
+    .card.lab  { --card-accent: var(--accent3); --card-accent-bg: rgba(255,107,107,0.07); --card-accent-border: rgba(255,107,107,0.18); }
+
+    /* ── Waveform decoration ── */
+    .waveform {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 20px;
+      margin-top: 0.25rem;
+      opacity: 0.35;
+    }
+    .waveform span {
+      display: block;
+      width: 2px;
+      background: var(--card-accent, var(--amber));
+      border-radius: 1px;
+      animation: wave 1.4s ease-in-out infinite;
+    }
+    .waveform span:nth-child(1)  { height: 30%; animation-delay: 0s; }
+    .waveform span:nth-child(2)  { height: 70%; animation-delay: 0.1s; }
+    .waveform span:nth-child(3)  { height: 100%; animation-delay: 0.2s; }
+    .waveform span:nth-child(4)  { height: 55%; animation-delay: 0.3s; }
+    .waveform span:nth-child(5)  { height: 80%; animation-delay: 0.15s; }
+    .waveform span:nth-child(6)  { height: 40%; animation-delay: 0.25s; }
+    .waveform span:nth-child(7)  { height: 65%; animation-delay: 0.05s; }
+
+    .card:hover .waveform { opacity: 0.7; }
+
+    @keyframes wave {
+      0%, 100% { transform: scaleY(1); }
+      50%       { transform: scaleY(0.4); }
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 1.4rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .footer-note {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .footer-note a {
+      color: var(--amber);
+      text-decoration: none;
+      border-bottom: 1px dashed var(--amber-dim);
+    }
+
+    .footer-note a:hover {
+      color: #ffc25e;
+    }
+
+    .footer-tag {
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #333338;
+    }
+
+    /* ── Entrance animation ── */
+    .card {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: fadein 0.4s ease forwards;
+    }
+    .card:nth-child(1) { animation-delay: 0.05s; }
+    .card:nth-child(2) { animation-delay: 0.12s; }
+    .card:nth-child(3) { animation-delay: 0.19s; }
+    .card:nth-child(4) { animation-delay: 0.26s; }
+    .card:nth-child(5) { animation-delay: 0.33s; }
+
+    @keyframes fadein {
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-row">
+    <div class="logo-icon">
+      <svg viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle class="pulse" cx="21" cy="21" r="18" stroke="#f5a623" stroke-width="1"/>
+        <rect x="17" y="10" width="8" height="14" rx="4" fill="#f5a623" opacity="0.9"/>
+        <path d="M13 22c0 4.4 3.6 8 8 8s8-3.6 8-8" stroke="#f5a623" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="21" y1="30" x2="21" y2="34" stroke="#f5a623" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="17" y1="34" x2="25" y2="34" stroke="#f5a623" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <h1>Voice<span>Clip</span></h1>
+  </div>
+  <p class="tagline">Outils de transcription &amp; transformation vocale — Mistral AI</p>
+</header>
+
+<main>
+  <p class="section-label">// outils disponibles</p>
+
+  <div class="grid">
+
+    <!-- VoiceClip v1 -->
+    <a class="card v1" href="voiceclip.html">
+      <div class="card-header">
+        <div class="card-icon">🎙️</div>
+        <span class="card-badge">v1 · original</span>
+      </div>
+      <div class="card-name">VoiceClip</div>
+      <div class="card-desc">
+        Transcription vocale longue durée via Voxtral Mini.<br>
+        Contournement de la limite des 30 s des interfaces mobiles.
+      </div>
+      <div class="waveform">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="card-link">voiceclip.html</div>
+    </a>
+
+    <!-- VoiceClip v2 -->
+    <a class="card v2" href="voiceclip-v2.html">
+      <div class="card-header">
+        <div class="card-icon">⚡</div>
+        <span class="card-badge">v2 · français</span>
+      </div>
+      <div class="card-name">VoiceClip v2</div>
+      <div class="card-desc">
+        Transcription optimisée FR + post-traitements Mistral : Optimiser, Prompt, Mail, Note, Critique, Poésie.
+      </div>
+      <div class="waveform">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="card-link">voiceclip-v2.html</div>
+    </a>
+
+    <!-- VoiceClip v3 -->
+    <a class="card v3" href="voiceclip-v3-multi.html">
+      <div class="card-header">
+        <div class="card-icon">🌍</div>
+        <span class="card-badge">v3 · multilingue</span>
+      </div>
+      <div class="card-name">VoiceClip v3</div>
+      <div class="card-desc">
+        Transcription multilingue FR / EN / UKR — détection et bascule automatique de langue.
+      </div>
+      <div class="waveform">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="card-link">voiceclip-v3-multi.html</div>
+    </a>
+
+    <!-- VoiceLab v1 -->
+    <a class="card lab" href="voicelab-v1.html">
+      <div class="card-header">
+        <div class="card-icon">🧪</div>
+        <span class="card-badge">v1 · lab</span>
+      </div>
+      <div class="card-name">VoiceLab</div>
+      <div class="card-desc">
+        Prompt libre vers Mistral — expérimentation de modèles et paramètres configurables.
+      </div>
+      <div class="waveform">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="card-link">voicelab-v1.html</div>
+    </a>
+
+    <!-- NoteClip v1 -->
+    <a class="card note" href="noteclip-v1.html">
+      <div class="card-header">
+        <div class="card-icon">📋</div>
+        <span class="card-badge">v1 · fichiers</span>
+      </div>
+      <div class="card-name">NoteClip</div>
+      <div class="card-desc">
+        Conversion de fichiers audio en texte structuré.<br>
+        Formatage automatique en blocs réutilisables.
+      </div>
+      <div class="waveform">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="card-link">noteclip-v1.html</div>
+    </a>
+
+  </div>
+</main>
+
+<footer>
+  <p class="footer-note">
+    🔑 Nécessite une clé API Mistral — à récupérer sur
+    <a href="https://console.mistral.ai" target="_blank" rel="noopener">console.mistral.ai</a>
+  </p>
+  <span class="footer-tag">RegularizedReflections / voiceclip</span>
+</footer>
+
+</body>
+</html>
