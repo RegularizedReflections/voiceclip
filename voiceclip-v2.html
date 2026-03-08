@@ -293,7 +293,7 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 
 <header>
   <div class="logo">Voice<em>Clip</em></div>
-  <span class="version">VOXTRAL + MISTRAL MEDIUM · V2.3</span>
+  <span class="version">VOXTRAL + MISTRAL MEDIUM · V2.4</span>
 </header>
 
 <!-- KEY SCREEN -->
@@ -610,7 +610,13 @@ async function startRec() {
   catch(e) { setState('error', 'Microphone inaccessible : ' + e.message); return; }
   audioChunks = [];
   const mime = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg',''].find(m => !m || MediaRecorder.isTypeSupported(m));
-  mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  try {
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  } catch(e) {
+    cleanupMedia();
+    setState('error', 'Impossible d\'initialiser l\'enregistreur : ' + e.message);
+    return;
+  }
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
   mediaRecorder.onstop = () => sendToVoxtral();
   mediaRecorder.start(500);
@@ -636,11 +642,25 @@ function stopRec(sendAfter) {
   if (!sendAfter) setState('idle');
 }
 
+function cleanupMedia() {
+  // Garantit la libération du micro et la réinitialisation des buffers dans tous les cas
+  clearInterval(timerInterval);
+  isRecording = false;
+  stopWaveform();
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch(e) {}
+  }
+  mediaRecorder = null;
+  audioChunks = [];
+}
+
 // ── VOXTRAL ──
 async function sendToVoxtral() {
   const mime = mediaRecorder.mimeType || 'audio/webm';
   const ext  = mime.includes('ogg') ? 'ogg' : 'webm';
   const blob = new Blob(audioChunks, { type: mime });
+  audioChunks = []; // libère la mémoire immédiatement
   const fd   = new FormData();
   fd.append('file', blob, 'audio.' + ext);
   fd.append('model', VOXTRAL_MODEL);
@@ -660,11 +680,11 @@ async function sendToVoxtral() {
     const data = await res.json();
     const text = data?.text?.trim();
     if (!text) { setState('error', 'Voxtral n\'a rien transcrit — audio silencieux ?'); return; }
-    // Reset ai card for new transcript
     document.getElementById('ai-card').classList.remove('active');
     document.getElementById('ai-result').innerText = '';
     setState('done', text);
   } catch(e) {
+    cleanupMedia(); // filet de sécurité : erreur réseau inattendue
     setState('error', 'Erreur réseau : ' + e.message);
   }
 }
