@@ -291,14 +291,70 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 }
 #btn-change-key:hover { color: var(--ink); }
 .hidden { display: none !important; }
+
+/* ── NET BADGE (Option C) ── */
+#net-badge {
+  display: none; align-items: center; gap: 5px;
+  font-size: 0.6rem; color: var(--muted); letter-spacing: 0.08em;
+}
+#net-badge.visible { display: flex; }
+#net-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border); flex-shrink: 0;
+  transition: background 0.5s;
+}
+
+/* ── RESTORE BANNER (Option B) ── */
+#restore-banner {
+  display: none; width: 100%; max-width: 600px;
+  background: rgba(26,92,140,0.07);
+  border: 1px solid rgba(26,92,140,0.22);
+  border-radius: var(--radius);
+  padding: 11px 15px;
+  font-size: 0.7rem; color: var(--blue);
+  align-items: center; gap: 8px; flex-wrap: wrap;
+}
+#restore-banner.active { display: flex; }
+#restore-info { flex: 1; line-height: 1.6; }
+.btn-restore {
+  padding: 6px 13px; background: var(--blue); color: #fff;
+  border: none; border-radius: 5px;
+  font-family: 'DM Mono', monospace; font-size: 0.68rem;
+  cursor: pointer; white-space: nowrap;
+}
+.btn-restore-dismiss {
+  padding: 6px 10px; background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 5px;
+  font-family: 'DM Mono', monospace; font-size: 0.68rem;
+  cursor: pointer;
+}
+
+/* ── RETRY BUTTON (Option A) ── */
+#btn-retry {
+  display: none; margin-top: 8px;
+  padding: 10px 16px; background: var(--amber); color: #fff;
+  border: none; border-radius: 6px;
+  font-family: 'DM Mono', monospace; font-size: 0.72rem; font-weight: 500;
+  cursor: pointer; transition: background 0.15s; width: 100%;
+}
+#btn-retry:hover { background: #9a5514; }
+#btn-retry.active { display: block; }
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">Voice<em>Clip</em></div>
-  <span class="version">VOXTRAL + MISTRAL MEDIUM · V2.5</span>
+  <span id="net-badge"><span id="net-dot"></span><span id="net-label"></span></span>
+  <span class="version">VOXTRAL + MISTRAL MEDIUM · V2.6</span>
 </header>
+
+<!-- RESTORE BANNER (Option B) -->
+<div id="restore-banner">
+  <span id="restore-info"></span>
+  <button class="btn-restore" onclick="doRestore()">↩ Restaurer</button>
+  <button class="btn-restore-dismiss" onclick="dismissRestore()">✕</button>
+</div>
 
 <!-- KEY SCREEN -->
 <div id="screen-key">
@@ -338,6 +394,8 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 
   <!-- ERROR -->
   <div id="error-box"></div>
+  <!-- RETRY (Option A) -->
+  <button id="btn-retry" onclick="retryAudio()">↩ Réessayer l'envoi</button>
 
   <!-- RESULT -->
   <div id="result-box">
@@ -490,6 +548,7 @@ let isRecording = false;
 let timerInterval = null;
 let seconds = 0;
 let analyser = null, audioCtx = null, animFrame = null, stream = null;
+let lastAudio = null; // Option A: retains last blob for retry
 const NUM_BARS = 28;
 
 // ── INIT ──
@@ -522,6 +581,8 @@ function showMain() {
   document.getElementById('key-indicator').classList.remove('hidden');
   document.getElementById('btn-change-key').classList.remove('hidden');
   setState('idle');
+  initNetBadge();       // Option C
+  checkRestoreTranscript(); // Option B
 }
 function changeKey() {
   sessionStorage.removeItem('vc_key');
@@ -582,6 +643,7 @@ function setState(state, extra) {
   err.classList.remove('active');
   btnRec.classList.remove('recording');
   btnRec.style.display = 'flex';
+  document.getElementById('btn-retry').classList.remove('active'); // Option A: hide retry on any state change
 
   if (state === 'idle') {
     dot.classList.add('idle');
@@ -621,6 +683,11 @@ async function toggleRec() {
   if (isRecording) stopRec(true); else await startRec();
 }
 async function startRec() {
+  // Option A: purge previous blob — new session starts
+  lastAudio = null;
+  // Option B: new recording = abandon any pending restore
+  clearSavedTranscript();
+  document.getElementById('restore-banner').classList.remove('active');
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch(e) { setState('error', 'Microphone inaccessible : ' + e.message); return; }
   audioChunks = [];
@@ -675,8 +742,16 @@ async function sendToVoxtral() {
   const mime = mediaRecorder.mimeType || 'audio/webm';
   const ext  = mime.includes('ogg') ? 'ogg' : 'webm';
   const blob = new Blob(audioChunks, { type: mime });
-  audioChunks = []; // libère la mémoire immédiatement
-  const fd   = new FormData();
+  lastAudio = { blob, mime, ext }; // Option A: keep blob before clearing chunks
+  audioChunks = [];
+  await sendAudioBlob(blob, mime, ext);
+}
+
+// Option A: shared send function (used by first attempt + retry)
+async function sendAudioBlob(blob, mime, ext) {
+  const retryBtn = document.getElementById('btn-retry');
+  retryBtn.classList.remove('active');
+  const fd = new FormData();
   fd.append('file', blob, 'audio.' + ext);
   fd.append('model', VOXTRAL_MODEL);
   fd.append('language', 'fr');
@@ -688,20 +763,43 @@ async function sendToVoxtral() {
     });
     if (!res.ok) {
       const err = await res.json().catch(()=>({}));
-      if (res.status === 401) setState('error', 'Clé API invalide. Cliquez sur "changer de clé".');
-      else setState('error', 'Erreur Mistral (' + res.status + ') : ' + (err.message||err.detail||res.statusText));
+      if (res.status === 401) {
+        lastAudio = null; // 401 = clé invalide, inutile de retenter
+        setState('error', 'Clé API invalide. Cliquez sur "changer de clé".');
+      } else {
+        setState('error', 'Erreur Mistral (' + res.status + ') : ' + (err.message||err.detail||res.statusText));
+        retryBtn.classList.add('active'); // Option A: offer retry
+      }
       return;
     }
     const data = await res.json();
     const text = data?.text?.trim();
-    if (!text) { setState('error', 'Voxtral n\'a rien transcrit — audio silencieux ?'); return; }
+    if (!text) {
+      lastAudio = null;
+      setState('error', 'Voxtral n\'a rien transcrit — audio silencieux ?');
+      return;
+    }
     document.getElementById('ai-card').classList.remove('active');
     document.getElementById('ai-result').innerText = '';
+    saveTranscript(text); // Option B: persist before displaying
+    lastAudio = null;     // Option A: success → purge blob
     setState('done', text);
   } catch(e) {
-    cleanupMedia(); // filet de sécurité : erreur réseau inattendue
+    cleanupMedia();
     setState('error', 'Erreur réseau : ' + e.message);
+    retryBtn.classList.add('active'); // Option A: offer retry on network error
   }
+}
+
+// Option A: retry handler
+function retryAudio() {
+  if (!lastAudio) return;
+  const retryBtn = document.getElementById('btn-retry');
+  retryBtn.classList.remove('active');
+  retryBtn.disabled = true;
+  setState('processing');
+  sendAudioBlob(lastAudio.blob, lastAudio.mime, lastAudio.ext)
+    .finally(() => { retryBtn.disabled = false; });
 }
 
 // ── TRANSFORM ──
@@ -779,6 +877,71 @@ async function transform(type) {
 }
 
 // ── UTILS ──
+
+// Option C: Network badge
+function initNetBadge() {
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!conn) return;
+  const badge = document.getElementById('net-badge');
+  const dot   = document.getElementById('net-dot');
+  const lbl   = document.getElementById('net-label');
+  badge.classList.add('visible');
+  function update() {
+    const et  = conn.effectiveType || '';
+    const rtt = conn.rtt || 0;
+    let color, text;
+    if (et === '4g' && rtt < 400)      { color = 'var(--ok)';     text = '4G'; }
+    else if (et === '4g' || et === '3g') { color = 'var(--amber)';  text = rtt >= 400 ? '⚠ lent' : '3G'; }
+    else if (et === '2g')              { color = 'var(--accent)';  text = '2G'; }
+    else if (et === 'slow-2g')         { color = 'var(--accent)';  text = '⚠ très lent'; }
+    else                               { color = 'var(--muted)';   text = et || '?'; }
+    dot.style.background = color;
+    lbl.textContent = text;
+  }
+  update();
+  conn.addEventListener('change', update);
+}
+
+// Option B: localStorage transcript persistence
+const LS_KEY = 'vc_transcript';
+const LS_TTL = 20 * 60 * 1000; // 20 minutes
+
+function saveTranscript(text) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ text, ts: Date.now() })); } catch(e) {}
+}
+function clearSavedTranscript() {
+  try { localStorage.removeItem(LS_KEY); } catch(e) {}
+}
+function checkRestoreTranscript() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const { text, ts } = JSON.parse(raw);
+    if (!text || Date.now() - ts > LS_TTL) { clearSavedTranscript(); return; }
+    const d     = new Date(ts);
+    const hhmm  = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const jj    = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+    document.getElementById('restore-info').textContent =
+      `Note du ${jj} à ${hhmm} non envoyée — restaurer le transcript ?`;
+    document.getElementById('restore-banner').classList.add('active');
+  } catch(e) {}
+}
+function doRestore() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const { text } = JSON.parse(raw);
+    document.getElementById('restore-banner').classList.remove('active');
+    document.getElementById('ai-card').classList.remove('active');
+    document.getElementById('ai-result').innerText = '';
+    setState('done', text);
+  } catch(e) {}
+}
+function dismissRestore() {
+  clearSavedTranscript();
+  document.getElementById('restore-banner').classList.remove('active');
+}
+
 function copyEl(id, btnId) {
   const text = (document.getElementById(id).innerText || '').trim();
   if (!text) return;
@@ -803,6 +966,8 @@ function resetForNew() {
   document.getElementById('ai-card').classList.remove('active');
   document.getElementById('char-count-orig').textContent = '0 car.';
   document.getElementById('char-count-ai').textContent = '0 car.';
+  lastAudio = null;           // Option A: purge blob
+  clearSavedTranscript();     // Option B: clear localStorage
   setState('idle');
 }
 </script>
