@@ -292,18 +292,6 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 #btn-change-key:hover { color: var(--ink); }
 .hidden { display: none !important; }
 
-/* ── NET BADGE (Option C) ── */
-#net-badge {
-  display: none; align-items: center; gap: 5px;
-  font-size: 0.6rem; color: var(--muted); letter-spacing: 0.08em;
-}
-#net-badge.visible { display: flex; }
-#net-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--border); flex-shrink: 0;
-  transition: background 0.5s;
-}
-
 /* ── RESTORE BANNER (Option B) ── */
 #restore-banner {
   display: none; width: 100%; max-width: 600px;
@@ -345,8 +333,7 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 
 <header>
   <div class="logo">Voice<em>Clip</em></div>
-  <span id="net-badge"><span id="net-dot"></span><span id="net-label"></span></span>
-  <span class="version">VOXTRAL + MISTRAL MEDIUM · V2.6</span>
+  <span class="version">VOXTRAL MINI V2 · V2.6</span>
 </header>
 
 <!-- RESTORE BANNER (Option B) -->
@@ -365,7 +352,7 @@ footer span { font-size: 0.62rem; color: var(--muted); }
     <input id="key-input" type="password" placeholder="sk-••••••••••••••••••" autocomplete="off" spellcheck="false"/>
     <button class="btn-ok" onclick="confirmKey()">OK</button>
   </div>
-  <p class="key-note">Voxtral Mini (~0.001 €/min) · Mistral Medium (~0.003 €/1k tokens) · clé active jusqu'à fermeture de l'onglet.</p>
+  <p class="key-note">Voxtral Mini Transcribe V2 (~0.003 €/min) · Mistral Medium (~0.003 €/1k tokens) · clé active jusqu'à fermeture de l'onglet.</p>
 </div>
 
 <!-- MAIN SCREEN -->
@@ -375,6 +362,20 @@ footer span { font-size: 0.62rem; color: var(--muted); }
     <div class="dot idle" id="dot"></div>
     <span id="status-text">Prêt à enregistrer</span>
     <span id="timer"></span>
+  </div>
+
+  <!-- RÉSEAU + DURÉE -->
+  <div id="net-row" style="display:none; flex-direction:column; gap:4px;">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <span id="net-badge" style="display:flex; align-items:center; gap:6px; font-size:0.68rem; color:var(--muted);">
+        <span id="net-dot" style="width:7px;height:7px;border-radius:50%;background:var(--border);flex-shrink:0;transition:background 0.5s;"></span>
+        <span id="net-label"></span>
+      </span>
+      <span id="rec-duration" style="font-size:0.68rem; color:var(--muted);"></span>
+    </div>
+    <div id="net-warning" style="display:none; font-size:0.65rem; color:var(--accent); padding:5px 0 2px; line-height:1.5;">
+      ⚠ Réseau insuffisant — préférez utiliser <strong>NoteClip</strong> en cas de note longue.
+    </div>
   </div>
 
   <div class="waveform-wrap" id="waveform"></div>
@@ -390,6 +391,7 @@ footer span { font-size: 0.62rem; color: var(--muted); }
   <div id="processing-box">
     <div class="spinner"></div>
     <p id="processing-msg">Voxtral transcrit…</p>
+    <p id="processing-duration" style="font-size:0.65rem; color:var(--muted);"></p>
   </div>
 
   <!-- ERROR -->
@@ -714,14 +716,25 @@ async function startRec() {
 }
 function stopRec(sendAfter) {
   clearInterval(timerInterval);
+  const recSecs = seconds; // capture before reset
   isRecording = false;
   stopWaveform();
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    if (sendAfter) setState('processing');
+    if (sendAfter) {
+      setState('processing');
+      // Show duration in processing box
+      const mm = String(Math.floor(recSecs/60)).padStart(2,'0');
+      const ss = String(recSecs%60).padStart(2,'0');
+      document.getElementById('processing-duration').textContent = `Durée : ${mm}:${ss}`;
+      document.getElementById('rec-duration').textContent = `Durée : ${mm}:${ss}`;
+    }
     mediaRecorder.stop();
   }
-  if (!sendAfter) setState('idle');
+  if (!sendAfter) {
+    setState('idle');
+    document.getElementById('rec-duration').textContent = '';
+  }
 }
 
 function cleanupMedia() {
@@ -882,21 +895,24 @@ async function transform(type) {
 function initNetBadge() {
   const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
   if (!conn) return;
-  const badge = document.getElementById('net-badge');
-  const dot   = document.getElementById('net-dot');
-  const lbl   = document.getElementById('net-label');
-  badge.classList.add('visible');
+  const netRow = document.getElementById('net-row');
+  const dot    = document.getElementById('net-dot');
+  const lbl    = document.getElementById('net-label');
+  const warn   = document.getElementById('net-warning');
+  netRow.style.display = 'flex';
   function update() {
     const et  = conn.effectiveType || '';
     const rtt = conn.rtt || 0;
-    let color, text;
-    if (et === '4g' && rtt < 400)      { color = 'var(--ok)';     text = '4G'; }
-    else if (et === '4g' || et === '3g') { color = 'var(--amber)';  text = rtt >= 400 ? '⚠ lent' : '3G'; }
-    else if (et === '2g')              { color = 'var(--accent)';  text = '2G'; }
-    else if (et === 'slow-2g')         { color = 'var(--accent)';  text = '⚠ très lent'; }
-    else                               { color = 'var(--muted)';   text = et || '?'; }
+    let color, text, bad = false;
+    if (et === '4g' && rtt < 400)       { color = 'var(--ok)';    text = '● 4G — réseau bon'; }
+    else if (et === '4g' || et === '3g') { color = 'var(--amber)'; text = '● 3G — réseau moyen'; bad = rtt >= 600; }
+    else if (et === '2g')               { color = 'var(--accent)'; text = '● 2G — réseau faible'; bad = true; }
+    else if (et === 'slow-2g')          { color = 'var(--accent)'; text = '● très lent'; bad = true; }
+    else                                { color = 'var(--muted)';  text = et || '—'; }
     dot.style.background = color;
+    lbl.style.color = color;
     lbl.textContent = text;
+    warn.style.display = bad ? 'block' : 'none';
   }
   update();
   conn.addEventListener('change', update);
