@@ -500,7 +500,7 @@ Retourne uniquement le texte optimisé, sans commentaire.` + INJECTION_GUARD
     label: '⌥ PROMPT',
     system: `Tu reçois la transcription brute d'une réflexion vocale.
 Extrais l'intention centrale et formule un prompt direct, prêt à coller dans un LLM.
-Règles strictes : maximum 120 mots, une seule instruction principale, pas de markdown complexe, pas de structure en sections ni de tableaux.
+Règles strictes : maximum 240 mots, une seule instruction principale, pas de markdown complexe, pas de structure en sections ni de tableaux.
 Si un contexte minimal est utile, une phrase suffit. Va à l'essentiel.
 Conserve la langue de l'auteur. Retourne uniquement le prompt, rien d'autre.` + INJECTION_GUARD
   },
@@ -508,7 +508,7 @@ Conserve la langue de l'auteur. Retourne uniquement le prompt, rien d'autre.` + 
     label: '✉ MAIL',
     system: `Tu reçois la transcription brute d'une réflexion vocale.
 Rédige un mail court et naturel, adapté au contexte et au ton du message.
-Règles : infère le registre depuis le contenu (décontracté si informel, pro si formel — pas de mail de prospection par défaut) ; 3 à 8 lignes maximum ; objet en première ligne préfixé "Objet :" ; pas de sections, pas de listes, pas de markdown.
+Règles : infère le registre depuis le contenu (décontracté si informel, pro si formel — pas de mail de prospection par défaut) ; 3 à 12 lignes maximum ; objet en première ligne préfixé "Objet :" ; pas de sections, pas de listes, pas de markdown.
 Si le destinataire ou l'objet exact sont flous, fais le choix le plus raisonnable sans le signaler.
 Conserve la langue de l'auteur. Retourne uniquement le mail, rien d'autre.` + INJECTION_GUARD
   },
