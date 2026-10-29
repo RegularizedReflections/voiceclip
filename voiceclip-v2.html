@@ -343,13 +343,52 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 }
 #btn-retry:hover { background: #9a5514; }
 #btn-retry.active { display: block; }
+
+/* ── V2.8 : RÉGLAGES MICRO ── */
+.mic-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  font-size: 0.64rem; color: var(--muted);
+}
+.mic-row select {
+  flex: 1 1 180px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-family: 'DM Mono', monospace; font-size: 0.64rem; color: var(--ink);
+}
+.mic-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.mic-toggle input { accent-color: var(--accent); }
+.link-btn {
+  font-size: 0.64rem; color: var(--muted);
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-family: 'DM Mono', monospace; text-decoration: underline;
+}
+.link-btn:hover { color: var(--ink); }
+
+/* ── V2.8 : DIAGNOSTIC ── */
+#diag {
+  display: none;
+  font-size: 0.6rem; color: var(--muted); line-height: 1.7;
+  border-left: 2px solid var(--border); padding-left: 10px;
+  word-break: break-word;
+}
+#diag.active { display: block; }
+.level-meter { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 5px; }
+.level-fill  { height: 100%; width: 0; background: var(--ok); transition: width 0.1s; }
+
+/* ── V2.8 : ALERTES ── */
+.warn-box {
+  display: none;
+  background: rgba(183,105,26,0.08); border: 1px solid rgba(183,105,26,0.28);
+  border-radius: var(--radius); padding: 11px 14px;
+  font-size: 0.68rem; color: var(--amber); line-height: 1.6;
+}
+.warn-box.active { display: block; }
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">Voice<em>Clip</em></div>
-  <span class="version">VOXTRAL MINI V2 · V2.7</span>
+  <span class="version">VOXTRAL MINI V2 · V2.8</span>
 </header>
 
 <!-- RESTORE BANNER (Option B) -->
@@ -398,6 +437,23 @@ footer span { font-size: 0.62rem; color: var(--muted); }
     </div>
   </div>
 
+  <!-- V2.8 : RÉGLAGES MICRO -->
+  <div class="mic-row" id="mic-row">
+    <select id="mic-select" class="hidden" onchange="onMicChange()" aria-label="Choix du micro"></select>
+    <label class="mic-toggle"><input type="checkbox" id="mic-proc" onchange="onProcChange()"> traitement audio</label>
+    <button class="link-btn" onclick="toggleDiag()">diagnostic</button>
+  </div>
+
+  <!-- V2.8 : DIAGNOSTIC -->
+  <div id="diag">
+    <span id="diag-text">—</span>
+    <div class="level-meter"><div class="level-fill" id="level-fill"></div></div>
+  </div>
+
+  <!-- V2.8 : ALERTES -->
+  <div class="warn-box" id="silence-warn"></div>
+  <div class="warn-box" id="lock-warn"></div>
+
   <div class="waveform-wrap" id="waveform"></div>
 
   <div class="btn-rec-wrap">
@@ -421,6 +477,9 @@ footer span { font-size: 0.62rem; color: var(--muted); }
 
   <!-- RESULT -->
   <div id="result-box">
+
+    <!-- V2.8 : rapport de coupures -->
+    <div class="warn-box" id="gap-warn"></div>
 
     <!-- TRANSCRIPT CARD -->
     <div class="card" id="transcript-card">
@@ -702,6 +761,150 @@ let analyser = null, audioCtx = null, animFrame = null, stream = null;
 let lastAudio = null; // Option A: retains last blob for retry
 const NUM_BARS = 28;
 
+// ── V2.8 : état robustesse micro / veille ──
+const IS_FIREFOX = /firefox|fxios/i.test(navigator.userAgent);
+const IS_ANDROID = /android/i.test(navigator.userAgent);
+const PREF_DEV  = 'vc_mic_device';
+const PREF_PROC = 'vc_mic_proc';
+let wakeLock = null, wakeLockOk = false;
+let recStartTs = 0, lastChunkTs = 0;
+let gaps = [], hiddenSince = 0, mutedSince = 0, endedAt = 0;
+let levelTimer = null, maxPeak = 0, silenceWarned = false, vizError = '', levelValid = false;
+let micInfo = { label: '', sampleRate: '', proc: null, mime: '' };
+
+function lsGet(k)    { try { return localStorage.getItem(k); } catch(e) { return null; } }
+function lsSet(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e) {} }
+function fmtT(ms)    { const s = Math.max(0, Math.round(ms / 1000)); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
+
+// Traitement audio du navigateur (écho / bruit / gain auto).
+// Désactivé par défaut sur Firefox Android : c'est la piste n°1 du « micro muet ».
+function procEnabled() {
+  const v = lsGet(PREF_PROC);
+  if (v === null) return !(IS_FIREFOX && IS_ANDROID);
+  return v === '1';
+}
+function micConstraints() {
+  const proc = procEnabled();
+  const a = { echoCancellation: proc, noiseSuppression: proc, autoGainControl: proc };
+  const dev = lsGet(PREF_DEV);
+  if (dev) a.deviceId = { ideal: dev };
+  return { audio: a };
+}
+async function getMicStream() {
+  try { return await navigator.mediaDevices.getUserMedia(micConstraints()); }
+  catch(e) {
+    // Contraintes refusées (micro débranché, réglage non supporté) → repli sur le micro par défaut
+    if (e.name === 'OverconstrainedError' || e.name === 'NotFoundError' || e.name === 'TypeError') {
+      lsSet(PREF_DEV, null);
+      return await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+    throw e;
+  }
+}
+async function refreshMicList() {
+  const sel = document.getElementById('mic-select');
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+    // Les noms ne sont visibles qu'après une première autorisation
+    if (devs.length < 2 || !devs.some(d => d.label)) { sel.classList.add('hidden'); return; }
+    const cur = lsGet(PREF_DEV) || '';
+    sel.innerHTML = '';
+    sel.add(new Option('micro par défaut', ''));
+    devs.forEach((d, i) => { if (d.deviceId !== 'default') sel.add(new Option(d.label || ('micro ' + (i+1)), d.deviceId)); });
+    sel.value = devs.some(d => d.deviceId === cur) ? cur : '';
+    sel.classList.remove('hidden');
+  } catch(e) { sel.classList.add('hidden'); }
+}
+function onMicChange()  { lsSet(PREF_DEV, document.getElementById('mic-select').value || null); renderDiag(); }
+function onProcChange() { lsSet(PREF_PROC, document.getElementById('mic-proc').checked ? '1' : '0'); renderDiag(); }
+function toggleDiag()   { document.getElementById('diag').classList.toggle('active'); renderDiag(); }
+
+function renderDiag(peak) {
+  const el = document.getElementById('diag-text');
+  const parts = [];
+  parts.push((IS_FIREFOX ? 'Firefox' : 'navigateur') + (IS_ANDROID ? ' Android' : ''));
+  if (micInfo.label) parts.push('micro : ' + micInfo.label);
+  if (micInfo.sampleRate) parts.push(micInfo.sampleRate + ' Hz');
+  parts.push('traitement ' + ((micInfo.proc ?? procEnabled()) ? 'on' : 'off'));
+  if (micInfo.mime) parts.push(micInfo.mime);
+  if (audioCtx) parts.push('analyse ' + audioCtx.state);
+  if (vizError) parts.push('visualisation KO (' + vizError + ')');
+  parts.push('veille ' + (!('wakeLock' in navigator) ? 'non gérée' : (isRecording ? (wakeLockOk ? 'bloquée ✓' : 'NON bloquée') : 'gérée')));
+  if (typeof peak === 'number') {
+    const db = peak > 0 ? Math.round(20 * Math.log10(peak)) : -Infinity;
+    parts.push('niveau ' + (db === -Infinity ? '−∞ (silence numérique)' : db + ' dB'));
+    const pct = peak > 0 ? Math.min(100, Math.max(0, (db + 60) / 60 * 100)) : 0;
+    document.getElementById('level-fill').style.width = pct + '%';
+  }
+  el.textContent = parts.join(' · ');
+}
+
+// ── V2.8 : verrou d'écran (empêche la mise en veille auto pendant l'enregistrement) ──
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) { wakeLockOk = false; return false; }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLockOk = true;
+    wakeLock.addEventListener('release', () => { wakeLock = null; wakeLockOk = false; });
+    return true;
+  } catch(e) { wakeLockOk = false; return false; }
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(()=>{}); }
+  wakeLock = null; wakeLockOk = false;
+}
+function showLockWarn(show) {
+  const w = document.getElementById('lock-warn');
+  if (show) {
+    w.innerHTML = '⚠ Ce navigateur ne peut pas empêcher la mise en veille. <strong>Garde l\'écran allumé</strong> : le son est perdu tant que l\'écran est verrouillé.';
+    w.classList.add('active');
+  } else w.classList.remove('active');
+}
+
+// ── V2.8 : détection des coupures ──
+function addGap(from, to, reason) {
+  if (!recStartTs || to - from < 2000) return;
+  gaps.push({ from: Math.max(0, from - recStartTs), to: Math.max(0, to - recStartTs), reason });
+}
+function closeOpenGaps(now) {
+  if (hiddenSince) { addGap(hiddenSince, now, 'écran verrouillé ou app en arrière-plan'); hiddenSince = 0; }
+  if (mutedSince)  { addGap(mutedSince,  now, 'micro coupé par le système'); mutedSince = 0; }
+}
+function buildGapReport() {
+  if (!gaps.length && !endedAt) return '';
+  const sorted = gaps.slice().sort((a,b) => a.from - b.from);
+  const merged = [];
+  sorted.forEach(g => {
+    const last = merged[merged.length - 1];
+    if (last && g.from <= last.to + 1000) { last.to = Math.max(last.to, g.to); if (!last.reason.includes(g.reason)) last.reason += ', ' + g.reason; }
+    else merged.push({ ...g });
+  });
+  const total = merged.reduce((s, g) => s + (g.to - g.from), 0);
+  let html = '⚠ <strong>Transcript probablement incomplet</strong> — environ ' + fmtT(total) + ' sans son capté :<br>';
+  html += merged.map(g => '· de ' + fmtT(g.from) + ' à ' + fmtT(g.to) + ' (' + g.reason + ')').join('<br>');
+  if (endedAt) html += '<br>· le système a coupé le micro à ' + fmtT(endedAt - recStartTs) + ', enregistrement arrêté.';
+  html += '<br>Pour une note longue, garde l\'écran allumé et l\'app au premier plan.';
+  return html;
+}
+function showGapReport() {
+  const w = document.getElementById('gap-warn');
+  const html = buildGapReport();
+  if (html) { w.innerHTML = html; w.classList.add('active'); }
+  else w.classList.remove('active');
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!isRecording) return;
+  const now = Date.now();
+  if (document.hidden) {
+    if (!hiddenSince) hiddenSince = now;
+  } else {
+    if (hiddenSince) { addGap(hiddenSince, now, 'écran verrouillé ou app en arrière-plan'); hiddenSince = 0; }
+    if (!wakeLock) acquireWakeLock().then(() => showLockWarn(!wakeLockOk));
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  }
+});
+
 // ── INIT ──
 window.addEventListener('DOMContentLoaded', () => {
   buildWaveform();
@@ -732,6 +935,9 @@ function showMain() {
   document.getElementById('key-indicator').classList.remove('hidden');
   document.getElementById('btn-change-key').classList.remove('hidden');
   setState('idle');
+  document.getElementById('mic-proc').checked = procEnabled(); // V2.8
+  refreshMicList();                                             // V2.8
+  renderDiag();                                                 // V2.8
   initNetBadge();       // Option C
   checkRestoreTranscript(); // Option B
 }
@@ -753,28 +959,92 @@ function buildWaveform() {
     bars.push(b);
   }
 }
-function startWaveform(s) {
-  audioCtx = new AudioContext();
+// V2.8 : la visualisation ne doit JAMAIS bloquer l'enregistrement.
+// Si elle échoue (ex. fréquences d'échantillonnage différentes sur Firefox),
+// l'enregistrement continue sans waveform.
+const AC = window.AudioContext || window.webkitAudioContext;
+function connectAnalyser(s) {
+  if (!audioCtx || audioCtx.state === 'closed') audioCtx = new AC();
   analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 64;
-  audioCtx.createMediaStreamSource(s).connect(analyser);
-  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.6;
+  try {
+    audioCtx.createMediaStreamSource(s).connect(analyser);
+  } catch(e) {
+    // Repli : contexte audio calé sur la fréquence du micro
+    const sr = s.getAudioTracks()[0]?.getSettings?.().sampleRate;
+    if (!sr) throw e;
+    try { audioCtx.close(); } catch(_) {}
+    audioCtx = new AC({ sampleRate: sr });
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.6;
+    audioCtx.createMediaStreamSource(s).connect(analyser);
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+}
+function startWaveform(s) {
+  vizError = '';
+  try { connectAnalyser(s); }
+  catch(e) { vizError = e.name || e.message || 'erreur'; analyser = null; renderDiag(); return; }
+  const freq = new Uint8Array(analyser.frequencyBinCount);
+  const usable = Math.floor(freq.length / 4); // ~0–6 kHz : la bande de la voix
   document.getElementById('waveform').classList.add('active');
   (function draw() {
     animFrame = requestAnimationFrame(draw);
-    analyser.getByteFrequencyData(data);
+    if (!analyser) return;
+    analyser.getByteFrequencyData(freq);
     bars.forEach((b, i) => {
-      const idx = Math.floor(i * data.length / bars.length);
-      b.style.height = Math.max(3, (data[idx] / 255) * 38) + 'px';
+      const idx = Math.floor(i * usable / bars.length);
+      b.style.height = Math.max(3, (freq[idx] / 255) * 38) + 'px';
     });
   })();
 }
 function stopWaveform() {
   if (animFrame) cancelAnimationFrame(animFrame);
+  animFrame = null;
   document.getElementById('waveform').classList.remove('active');
   bars.forEach(b => b.style.height = '3px');
-  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  if (audioCtx) { try { audioCtx.close(); } catch(e) {} audioCtx = null; }
   analyser = null;
+}
+
+// V2.8 : surveillance du niveau + détection d'un flux vide
+function startLevelMonitor() {
+  maxPeak = 0; silenceWarned = false; levelValid = false;
+  const tbuf = new Float32Array(1024);
+  levelTimer = setInterval(() => {
+    if (!analyser) { renderDiag(); return; }
+    let p = 0;
+    if (analyser.getFloatTimeDomainData) {
+      analyser.getFloatTimeDomainData(tbuf);
+      for (let i = 0; i < tbuf.length; i++) { const v = Math.abs(tbuf[i]); if (v > p) p = v; }
+    }
+    if (p > maxPeak) maxPeak = p;
+    renderDiag(p);
+    const elapsed = Date.now() - recStartTs;
+    const ctxRunning = audioCtx && audioCtx.state === 'running';
+    if (ctxRunning && !document.hidden) levelValid = true;
+    if (!silenceWarned && ctxRunning && !document.hidden && elapsed > 4000 && maxPeak < 0.0005) {
+      silenceWarned = true;
+      showSilenceWarn(true);
+    } else if (silenceWarned && maxPeak >= 0.002) {
+      silenceWarned = false;
+      showSilenceWarn(false);
+    }
+  }, 250);
+}
+function stopLevelMonitor() { clearInterval(levelTimer); levelTimer = null; }
+function showSilenceWarn(show) {
+  const w = document.getElementById('silence-warn');
+  if (!show) { w.classList.remove('active'); return; }
+  w.innerHTML = '⚠ <strong>Le micro n\'envoie que du silence.</strong> Arrête l\'enregistrement, puis :<br>'
+    + '1. ' + (procEnabled() ? 'décoche' : 'coche') + ' « traitement audio » et relance ;<br>'
+    + '2. si une liste de micros apparaît, choisis-en un autre ;<br>'
+    + '3. vérifie qu\'aucun casque ou écouteur Bluetooth n\'est connecté.'
+    + (IS_FIREFOX && IS_ANDROID ? '<br>Si rien n\'y fait, c\'est un bug de Firefox Android : utilise Samsung Internet en attendant.' : '');
+  w.classList.add('active');
+  document.getElementById('diag').classList.add('active');
 }
 
 // ── STATE MACHINE ──
@@ -795,6 +1065,8 @@ function setState(state, extra) {
   btnRec.classList.remove('recording');
   btnRec.style.display = 'flex';
   document.getElementById('btn-retry').classList.remove('active'); // Option A: hide retry on any state change
+  // V2.8 : réglages micro modifiables seulement à l'arrêt
+  document.getElementById('mic-row').style.display = (state === 'idle' || state === 'error') ? 'flex' : 'none';
 
   if (state === 'idle') {
     dot.classList.add('idle');
@@ -824,6 +1096,7 @@ function setState(state, extra) {
   } else if (state === 'error') {
     dot.className = 'dot';
     stEl.textContent = 'Erreur';
+    lbl.textContent = 'APPUYER POUR PARLER'; // V2.8
     err.classList.add('active');
     err.textContent = extra || 'Erreur inconnue.';
   }
@@ -839,8 +1112,37 @@ async function startRec() {
   // Option B: new recording = abandon any pending restore
   clearSavedTranscript();
   document.getElementById('restore-banner').classList.remove('active');
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch(e) { setState('error', 'Microphone inaccessible : ' + e.message); return; }
+  // V2.8 : remise à zéro des alertes et du suivi des coupures
+  showSilenceWarn(false); showLockWarn(false);
+  document.getElementById('gap-warn').classList.remove('active');
+  gaps = []; hiddenSince = 0; mutedSince = 0; endedAt = 0;
+
+  // V2.8 : contexte audio créé AVANT tout await, tant que le geste utilisateur est « frais »
+  // (sinon certains navigateurs le laissent suspendu → visualisation et analyse muettes)
+  try { if (AC) { audioCtx = new AC(); audioCtx.resume().catch(()=>{}); } } catch(e) { audioCtx = null; }
+  // V2.8 : verrou d'écran demandé dans le même geste
+  const wlPromise = acquireWakeLock();
+
+  try { stream = await getMicStream(); }
+  catch(e) {
+    if (audioCtx) { try { audioCtx.close(); } catch(_) {} audioCtx = null; }
+    releaseWakeLock();
+    setState('error', 'Microphone inaccessible : ' + (e.name ? e.name + ' — ' : '') + e.message);
+    return;
+  }
+
+  // V2.8 : infos micro pour le diagnostic + écoute des coupures système
+  const track = stream.getAudioTracks()[0];
+  const st = track?.getSettings?.() || {};
+  micInfo = { label: track?.label || '', sampleRate: st.sampleRate || '', proc: st.echoCancellation ?? procEnabled(), mime: '' };
+  if (track) {
+    if (track.muted) mutedSince = Date.now();
+    track.onmute   = () => { if (isRecording && !mutedSince) mutedSince = Date.now(); };
+    track.onunmute = () => { if (mutedSince) { addGap(mutedSince, Date.now(), 'micro coupé par le système'); mutedSince = 0; } };
+    track.onended  = () => { if (isRecording) { endedAt = Date.now(); stopRec(true); } };
+  }
+  refreshMicList(); // les noms de micros sont maintenant disponibles
+
   audioChunks = [];
   const mime = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg',''].find(m => !m || MediaRecorder.isTypeSupported(m));
   try {
@@ -850,25 +1152,40 @@ async function startRec() {
     setState('error', 'Impossible d\'initialiser l\'enregistreur : ' + e.message);
     return;
   }
-  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+  micInfo.mime = mediaRecorder.mimeType || mime || '';
+  mediaRecorder.ondataavailable = e => {
+    const now = Date.now();
+    // V2.8 : flux interrompu (aucun morceau reçu pendant plus de 3 s)
+    if (lastChunkTs && now - lastChunkTs > 3000) addGap(lastChunkTs, now, 'flux audio interrompu');
+    lastChunkTs = now;
+    if (e.data.size > 0) audioChunks.push(e.data);
+  };
   mediaRecorder.onstop = () => sendToVoxtral();
   mediaRecorder.start(500);
   isRecording = true;
   seconds = 0;
+  recStartTs = Date.now();
+  lastChunkTs = recStartTs;
   setState('recording');
   startWaveform(stream);
+  startLevelMonitor();
+  wlPromise.then(() => { if (isRecording) { showLockWarn(!wakeLockOk); renderDiag(); } });
+  // V2.8 : chrono basé sur l'horloge réelle (un setInterval ralentit quand l'écran s'éteint)
   timerInterval = setInterval(() => {
-    seconds++;
-    document.getElementById('timer').textContent =
-      String(Math.floor(seconds/60)).padStart(2,'0') + ':' + String(seconds%60).padStart(2,'0');
-  }, 1000);
+    seconds = Math.floor((Date.now() - recStartTs) / 1000);
+    document.getElementById('timer').textContent = fmtT(seconds * 1000);
+  }, 500);
 }
 function stopRec(sendAfter) {
   clearInterval(timerInterval);
-  const recSecs = seconds; // capture before reset
+  const recSecs = recStartTs ? Math.floor((Date.now() - recStartTs) / 1000) : seconds;
+  closeOpenGaps(Date.now()); // V2.8
   isRecording = false;
+  stopLevelMonitor();        // V2.8
+  releaseWakeLock();         // V2.8
+  showLockWarn(false);       // V2.8
   stopWaveform();
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     if (sendAfter) {
       setState('processing');
@@ -892,8 +1209,11 @@ function cleanupMedia() {
   // Garantit la libération du micro et la réinitialisation des buffers dans tous les cas
   clearInterval(timerInterval);
   isRecording = false;
+  stopLevelMonitor();   // V2.8
+  releaseWakeLock();    // V2.8
+  showLockWarn(false);  // V2.8
   stopWaveform();
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     try { mediaRecorder.stop(); } catch(e) {}
   }
@@ -940,7 +1260,11 @@ async function sendAudioBlob(blob, mime, ext) {
     const text = data?.text?.trim();
     if (!text) {
       lastAudio = null;
-      setState('error', 'Voxtral n\'a rien transcrit — audio silencieux ?');
+      const silent = levelValid && maxPeak < 0.0005;
+      setState('error', silent
+        ? 'Voxtral n\'a rien transcrit : le micro n\'a envoyé que du silence. Change le réglage « traitement audio » ou le micro, puis réessaie (voir « diagnostic »).'
+        : 'Voxtral n\'a rien transcrit — audio silencieux ?');
+      if (silent) document.getElementById('diag').classList.add('active');
       return;
     }
     document.getElementById('ai-card').classList.remove('active');
@@ -948,6 +1272,7 @@ async function sendAudioBlob(blob, mime, ext) {
     saveTranscript(text); // Option B: persist before displaying
     lastAudio = null;     // Option A: success → purge blob
     setState('done', text);
+    showGapReport();      // V2.8 : signale les passages perdus
   } catch(e) {
     cleanupMedia();
     setState('error', 'Erreur réseau : ' + e.message);
@@ -1184,6 +1509,9 @@ function resetForNew() {
   document.getElementById('duration-row').style.display = 'none';
   lastAudio = null;           // Option A: purge blob
   clearSavedTranscript();     // Option B: clear localStorage
+  document.getElementById('gap-warn').classList.remove('active'); // V2.8
+  showSilenceWarn(false);                                          // V2.8
+  gaps = []; endedAt = 0;                                          // V2.8
   setState('idle');
 }
 </script>
